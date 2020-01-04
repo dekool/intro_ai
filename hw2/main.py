@@ -25,7 +25,7 @@ def start_game_with_players(players, game_duration: int, board_width: int, board
                             grid_size=Grid2DSize(board_width, board_height),
                             n_fruits=n_fruits,
                             game_duration_in_turns=game_duration)
-    env.run_game(human_speed=not fast_run, render=not graphics_off)
+    return env.run_game(human_speed=not fast_run, render=not graphics_off)
 
 
 def start_part_c(n_agents: int, game_duration: int, board_width: int, board_height: int,
@@ -83,12 +83,13 @@ def start_custom_game(p1: str, p2: str, game_duration: int, board_width: int, bo
     players = [get_player(p1), get_player(p2)]
 
     fast_run = True if use_keyboard_listener == False else fast_run
-    start_game_with_players(players,
+    return start_game_with_players(players,
                             game_duration,
                             board_width,
                             board_height,
                             n_fruits,
-                            fast_run=fast_run)
+                            fast_run=fast_run,
+                            graphics_off=graphics_off)
     
     
 def get_user_command(argv):
@@ -155,7 +156,7 @@ def get_user_command(argv):
                      options.fast_run,
                      options.graphics_off)
     elif options.custom_game:
-        start_custom_game(options.player1,
+        test = start_custom_game(options.player1,
                           options.player2,
                           options.game_duration,
                           options.board_width,
@@ -165,6 +166,7 @@ def get_user_command(argv):
                           options.graphics_off,
                           options.use_keyboard_listener
                           )
+        print("player 0 length: " + str(test[0]))
     elif options.demo_run:
         start_demo_game(options.n_agents,
                         options.game_duration,

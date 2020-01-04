@@ -1,10 +1,8 @@
-from environment import Player, GameState, GameAction, get_next_state
+from environment import Player, GameState, GameAction, get_next_state, SnakeMovementDirections
 from utils import get_fitness
 import numpy as np
 from enum import Enum
-# added imports
-import time
-#from main import start_custom_game
+
 
 def nearest_fruit_distance(state: GameState, head_position: tuple) -> int:
     minimum = np.inf
@@ -30,24 +28,6 @@ def avg_distance_from_all_fruits(state: GameState, head_position: tuple) -> floa
 
     return dist / len(state.fruits_locations)
 
-
-def fruit_rank(state: GameState, fruit: tuple) -> int:
-    """
-    calculate the number of fruits (including this one) which are at distance less than the square root of the board size
-    from the given fruit
-    """
-    max_range = np.sqrt(np.min([state.board_size['width'],state.board_size['height']]))
-    close_fruits = 0
-    for fruit_location in state.fruits_locations:
-        fruit_dist = 0
-        # calculate the fruit distance
-        fruit_dist += np.abs(fruit_location[0] - fruit[0])
-        fruit_dist += np.abs(fruit_location[1] - fruit[1])
-        if fruit_dist < max_range:
-            close_fruits += 1
-    return close_fruits
-
-
 def heuristic(state: GameState, player_index: int) -> float:
     """
     Computes the heuristic value for the agent with player_index at the given state
@@ -72,7 +52,7 @@ class MinimaxAgent(Player):
     hint: use the 'agent_action' property to determine if it's the agents turn or the opponents' turn. You can pass
     'None' value (without quotes) to indicate that your agent haven't picked an action yet.
     """
-    DEPTH = 3
+    DEPTH = 2
 
     class Turn(Enum):
         AGENT_TURN = 'AGENT_TURN'
@@ -123,7 +103,7 @@ class MinimaxAgent(Player):
     def get_action(self, state: GameState) -> GameAction:
         game_state = self.TurnBasedGameState(state, None)
         actions = state.get_possible_actions(player_index=self.player_index)
-        best_action = None
+        best_action = GameAction.STRAIGHT  # default action. will be changed
         best_value = -np.inf
         for action in actions:
             game_state.agent_action = action
@@ -145,7 +125,7 @@ class AlphaBetaAgent(MinimaxAgent):
             cur_max = -np.inf
             for action in actions:
                 tb_state.agent_action = action
-                value = self._RB_minimax(tb_state, self.Turn.OPPONENTS_TURN, d, alpha, beta)
+                value = self._RB_alpha_beta(tb_state, self.Turn.OPPONENTS_TURN, d, alpha, beta)
                 cur_max = max(cur_max, value)
                 alpha = max(cur_max, alpha)
                 if cur_max >= beta:
@@ -157,7 +137,7 @@ class AlphaBetaAgent(MinimaxAgent):
                                                                                    player_index=self.player_index):
                 next_state = get_next_state(tb_state.game_state, opponents_actions)
                 new_tb_state = self.TurnBasedGameState(next_state, None)
-                value = self._RB_minimax(new_tb_state, self.Turn.AGENT_TURN, d - 1)
+                value = self._RB_alpha_beta(new_tb_state, self.Turn.AGENT_TURN, d - 1, alpha, beta)
                 cur_min = min(cur_min, value)
                 beta = min(cur_min, beta)
                 if cur_min <= alpha:
@@ -167,7 +147,7 @@ class AlphaBetaAgent(MinimaxAgent):
     def get_action(self, state: GameState) -> GameAction:
         game_state = self.TurnBasedGameState(state, None)
         actions = state.get_possible_actions(player_index=self.player_index)
-        best_action = None
+        best_action = GameAction.STRAIGHT  # default action. will be changed
         best_value = -np.inf
         for action in actions:
             game_state.agent_action = action
@@ -209,8 +189,8 @@ class LocalSearchState:
             return self.get_legal_actions_current_move(current_move_index)
         for current_action in list(GameAction):
             for next_action in list(GameAction):
-                # only if the new action is different from the state action the operator is legal
-                if current_action != self.actions[current_move_index] and next_action != self.actions[current_move_index+1]:
+                # only if the new action is different from one of current action or the next actions the operator is legal
+                if current_action != self.actions[current_move_index] or next_action != self.actions[current_move_index+1]:
                     new_actions_list = self.actions.copy()
                     new_actions_list[current_move_index] = current_action
                     new_actions_list[current_move_index+1] = next_action
@@ -232,7 +212,7 @@ def SAHC_sideways():
     :return:
     """
     game_duration = 50
-    initial_state = [GameAction.STRAIGHT] #, GameAction.STRAIGHT, GameAction.LEFT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.RIGHT,GameAction.STRAIGHT]
+    initial_state = [GameAction.STRAIGHT]
     current_state = LocalSearchState(initial_state, game_duration)
     sideways = 0
     limit_sidesteps = 30
@@ -248,11 +228,15 @@ def SAHC_sideways():
                 best_states.append(new_state)
         current_val = get_fitness(tuple(current_state.actions))
         if best_val > current_val:
-            current_state = np.random.choice(best_states)
+            index = np.random.choice(len(best_states))
+            current_state = best_states[index]
             print("best val so far:" + str(best_val))
             sideways = 0
         elif best_val == current_val and sideways < limit_sidesteps:
-            current_state = np.random.choice(best_states)
+            # replace in random to one of the new best states, or stay with the current one
+            best_states.append(current_state)
+            index = np.random.choice(len(best_states))
+            current_state = best_states[index]
             sideways += 1
         else:  # no more improving moves or no more sidesteps allowed
             pass
@@ -277,15 +261,13 @@ def local_search():
     :return:
     """
     game_duration = 50
-    #initial_state = [GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.LEFT, GameAction.STRAIGHT,
-    #                 GameAction.STRAIGHT, GameAction.RIGHT, GameAction.STRAIGHT]
     initial_state = [GameAction.STRAIGHT]
     current_state = LocalSearchState(initial_state, game_duration)
     sideways = 0
     limit_sidesteps = 50
     last_best_val = -np.inf
     last_best_actions = initial_state
-    random_steps_allowed = 5
+    random_steps_allowed = 3
     for r in range(random_steps_allowed):
         for i in range(game_duration):
             best_val = -np.inf
@@ -299,19 +281,24 @@ def local_search():
                     best_states.append(new_state)
             current_val = get_fitness(tuple(current_state.actions))
             if best_val > current_val:
-                current_state = np.random.choice(best_states)
+                index = np.random.choice(len(best_states))
+                current_state = best_states[index]
                 print("best val so far:" + str(best_val))
                 sideways = 0
             elif best_val == current_val and sideways < limit_sidesteps:
-                current_state = np.random.choice(best_states)
+                best_states.append(current_state)
+                index = np.random.choice(len(best_states))
+                current_state = best_states[index]
                 sideways += 1
             else:  # no more improving moves or no more sidesteps allowed
                 pass
         current_val = get_fitness(tuple(current_state.actions))
         print("last loop over. his score is: " + str(current_val))
+        print("Last loop vector: " + str(current_state.actions))
         if current_val > last_best_val: # the last run didn't improved at all
             last_best_val = current_val
             last_best_actions = current_state
+            last_best_actions.actions.copy()
         # new random initial state
         for j in range(game_duration):
             current_state.actions[j] = np.random.choice(list(GameAction))
@@ -320,54 +307,191 @@ def local_search():
     print("best score found:")
     print(last_best_val)
 
-
-
-# TODO: delete this function - it is only for testing!
-from agents import GreedyAgent, StaticAgent, RandomPlayer
-from environment import SnakesBackendSync, Grid2DSize
-def get_fitness2(moves_sequence: tuple) -> float:
-    n_agents = 20
-    static_agent = StaticAgent(moves_sequence)
-    opponents = [RandomPlayer() for _ in range(n_agents - 1)]
-    players = [static_agent] + opponents
-
-    board_width = 40
-    board_height = 40
-    n_fruits = 50
-    game_duration = len(moves_sequence)
-
-    env = SnakesBackendSync(players,
-                            grid_size=Grid2DSize(board_width, board_height),
-                            n_fruits=n_fruits,
-                            game_duration_in_turns=game_duration, random_seed=42)
-    env.run_game(human_speed=True, render=True)
-    np.random.seed()
-    return env.game_state.snakes[0].length + env.game_state.snakes[0].alive
-
-
-def run_experiments():
-    agents = ["GreedyAgent", "BetterGreedyAgent", "MinimaxAgent", "AlphaBetaAgent"]
-    depths = [2, 3, 4]
-    default_duration = 500
-    default_width = 50
-    default_height = 50
-    default_fruits = 51
-    for agent in agents:
-        if agent in ["GreedyAgent", "BetterGreedyAgent"]:
-            start_custom_game(agent, "GreedyAgent")
-        else:
-            for d in depths:
-                pass
-
 class TournamentAgent(Player):
 
+    def emergency(self, state: GameState, direction) -> GameAction:
+        head = state.snakes[self.player_index].head
+        tail = state.snakes[self.player_index].tail_position
+        if direction == SnakeMovementDirections.UP:
+            if tail == (head[0], head[1] + 1):
+                if state.snakes[self.player_index].is_in_cell((tail[0], tail[1] + 1)):
+                    return GameAction.LEFT
+                else:
+                    return GameAction.RIGHT
+        elif direction == SnakeMovementDirections.DOWN:
+            if tail == (head[0], head[1] - 1):
+                if state.snakes[self.player_index].is_in_cell((tail[0], tail[1] + 1)):
+                    return GameAction.RIGHT
+                else:
+                    return GameAction.LEFT
+        elif direction == SnakeMovementDirections.RIGHT:
+            if tail == (head[0] + 1, head[1]):
+                if state.snakes[self.player_index].is_in_cell((tail[0] + 1, tail[1])):
+                    return GameAction.LEFT
+                else:
+                    return GameAction.RIGHT
+        else:
+            if tail == (head[0] - 1, head[1]):
+                if state.snakes[self.player_index].is_in_cell((tail[0] + 1, tail[1])):
+                    return GameAction.RIGHT
+                else:
+                    return GameAction.LEFT
+        # else - random...
+        choice = np.random.choice(2)
+        if choice == 0:
+            return GameAction.LEFT
+        return GameAction.RIGHT
+
+    def is_trap(self, state: GameState) -> bool:
+        head = state.snakes[self.player_index].head
+        direction = state.snakes[self.player_index].direction
+        if direction == SnakeMovementDirections.UP:
+            cell_to_check = (head[0] - 1, head[1])
+        elif direction == SnakeMovementDirections.DOWN:
+            cell_to_check = (head[0] + 1, head[1])
+        elif direction == SnakeMovementDirections.RIGHT:
+            cell_to_check = (head[0], head[1] + 1)
+        else:
+            cell_to_check = (head[0], head[1] - 1)
+        return state.snakes[self.player_index].is_in_cell(cell_to_check)
+
+    def trap_escape(self, state: GameState) -> GameAction:
+        head = state.snakes[self.player_index].head
+        tail = state.snakes[self.player_index].tail_position
+        direction = state.snakes[self.player_index].direction
+        if direction == SnakeMovementDirections.UP:
+            cell_to_check = (head[0] - 1, head[1])
+        elif direction == SnakeMovementDirections.DOWN:
+            cell_to_check = (head[0] + 1, head[1])
+        elif direction == SnakeMovementDirections.RIGHT:
+            cell_to_check = (head[0], head[1] + 1)
+        else:
+            cell_to_check = (head[0], head[1] - 1)
+
+        if state.snakes[self.player_index].is_in_cell(cell_to_check):
+            if direction == SnakeMovementDirections.UP:
+                # check if right is also death
+                if state.snakes[self.player_index].is_in_cell((head[0], head[1] + 1)):
+                    return GameAction.LEFT
+                # check if left is also death
+                elif state.snakes[self.player_index].is_in_cell((head[0], head[1] - 1)):
+                    return GameAction.RIGHT
+                # tail(x) > head(x)
+                if tail[1] > head[1]:
+                    return GameAction.RIGHT
+                elif tail[1] < head[1]:
+                    return GameAction.LEFT
+                else:
+                    return self.emergency(state, direction)
+            elif direction == SnakeMovementDirections.DOWN:
+                # check if right is also death
+                if state.snakes[self.player_index].is_in_cell((head[0], head[1] + 1)):
+                    return GameAction.RIGHT
+                # check if left is also death
+                elif state.snakes[self.player_index].is_in_cell((head[0], head[1] - 1)):
+                    return GameAction.LEFT
+                # tail(x) > head(x)
+                if tail[1] > head[1]:
+                    return GameAction.LEFT
+                elif tail[1] < head[1]:
+                    return GameAction.RIGHT
+                else:
+                    return self.emergency(state, direction)
+            elif direction == SnakeMovementDirections.RIGHT:
+                # check if up is also death
+                if state.snakes[self.player_index].is_in_cell((head[0] - 1, head[1])):
+                    return GameAction.RIGHT
+                # check if down is also death
+                elif state.snakes[self.player_index].is_in_cell((head[0] + 1, head[1])):
+                    return GameAction.LEFT
+                # tail(y) > head(y)
+                if tail[0] > head[0]:
+                    return GameAction.RIGHT
+                elif tail[0] < head[0]:
+                    return GameAction.LEFT
+                else:
+                    return self.emergency(state, direction)
+            elif direction == SnakeMovementDirections.LEFT:
+                # check if up is also death
+                if state.snakes[self.player_index].is_in_cell((head[0] - 1, head[1])):
+                    return GameAction.LEFT
+                # check if down is also death
+                elif state.snakes[self.player_index].is_in_cell((head[0] + 1, head[1])):
+                    return GameAction.RIGHT
+                # tail(y) > head(y)
+                if tail[0] > head[0]:
+                    return GameAction.LEFT
+                elif tail[0] < head[0]:
+                    return GameAction.RIGHT
+                else:
+                    return self.emergency(state, direction)
+
+    def fruit_rank(self, state: GameState, fruit_location: tuple) -> int:
+        """
+        calculate the number of fruits (including this one) which are at close distance
+        from the given fruit
+        """
+        rank = 0
+        for i in range(-3, 3):
+            for j in range(-3, 3):
+                if (fruit_location[0]+i, fruit_location[1]+j) in state.fruits_locations:
+                    rank += 5 - (np.abs(i) + np.abs(j))
+        return rank
+
+    def fruits_ranks(self, state: GameState):
+        fruits_ranks = {}
+        for fruit_location in state.fruits_locations:
+            fruits_ranks[fruit_location] = self.fruit_rank(state, fruit_location)
+        return fruits_ranks
+
+    def nearest_good_fruit_distance(self, state: GameState, head_position: tuple, fruits_ranks) -> int:
+        minimum = np.inf
+        for fruit_location in state.fruits_locations:
+            x_distance = np.abs(fruit_location[0] - head_position[0])
+            y_distance = np.abs(fruit_location[1] - head_position[1])
+            fruit_distance = x_distance + y_distance
+            if fruits_ranks[fruit_location] >= 10:
+                if fruit_distance < minimum:
+                    minimum = fruit_distance
+        return minimum
+
+    def tournament_heuristic(self, state: GameState) -> float:
+        """
+        Computes the heuristic value for the agent with player_index at the given state
+        :param state:
+        :param player_index: integer. represents the identity of the player. this is the index of the agent's snake in the
+        state.snakes array as well.
+        :return:
+        """
+        if not state.snakes[self.player_index].alive:
+            return state.snakes[self.player_index].length
+
+        return 5.1 * state.snakes[self.player_index].length + \
+               3 * (1 / nearest_fruit_distance(state, state.snakes[self.player_index].head)) + \
+               5 * (1 / self.nearest_good_fruit_distance(state, state.snakes[self.player_index].head,self.fruits_ranks(state))) + \
+               2 * (1 / avg_distance_from_all_fruits(state, state.snakes[self.player_index].head))
+
     def get_action(self, state: GameState) -> GameAction:
-        pass
+        if self.is_trap(state):
+            return self.trap_escape(state)
+        # init with all possible actions for the case where the agent is alone. it will (possibly) be overridden later
+        best_actions = state.get_possible_actions(player_index=self.player_index)
+        best_value = -np.inf
+        for action in state.get_possible_actions(player_index=self.player_index):
+            for opponents_actions in state.get_possible_actions_dicts_given_action(action,
+                                                                                   player_index=self.player_index):
+                opponents_actions[self.player_index] = action
+                next_state = get_next_state(state, opponents_actions)
+                h_value = self.tournament_heuristic(next_state)
+                if h_value > best_value:
+                    best_value = h_value
+                    best_actions = [action]
+                elif h_value == best_value:
+                    best_actions.append(action)
+
+        return np.random.choice(best_actions)
 
 
 if __name__ == '__main__':
-    #get_fitness2(tuple([GameAction.LEFT,GameAction.LEFT,GameAction.LEFT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.LEFT,GameAction.STRAIGHT,GameAction.LEFT,GameAction.LEFT,GameAction.STRAIGHT,GameAction.RIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.RIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.LEFT,GameAction.LEFT,GameAction.RIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.STRAIGHT,GameAction.LEFT,GameAction.LEFT,GameAction.STRAIGHT,GameAction.RIGHT,GameAction.RIGHT,GameAction.STRAIGHT]))
-    #get_fitness2(tuple([GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.LEFT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.RIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.LEFT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.LEFT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.STRAIGHT, GameAction.LEFT, GameAction.LEFT]))
-    #SAHC_sideways()
+    SAHC_sideways()
     local_search()
-    #run_experiments()
