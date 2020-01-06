@@ -1,0 +1,8 @@
+﻿GreedyAgent,1,10.5,0.011520771
+BetterGreedyAgent,1,45.7,0.014582901
+MinimaxAgent,2,46.8,0.074058598
+MinimaxAgent,3,50.1,0.993472052
+MinimaxAgent,4,45.4,2.077844396
+AlphaBetaAgent,2,45.4,0.024870297
+AlphaBetaAgent,3,43.4,0.111983079
+AlphaBetaAgent,4,47.8,0.574608261
