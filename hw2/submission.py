@@ -307,42 +307,15 @@ def local_search():
     print("best score found:")
     print(last_best_val)
 
+
 class TournamentAgent(Player):
 
-    def emergency(self, state: GameState, direction) -> GameAction:
-        head = state.snakes[self.player_index].head
-        tail = state.snakes[self.player_index].tail_position
-        if direction == SnakeMovementDirections.UP:
-            if tail == (head[0], head[1] + 1):
-                if state.snakes[self.player_index].is_in_cell((tail[0], tail[1] + 1)):
-                    return GameAction.LEFT
-                else:
-                    return GameAction.RIGHT
-        elif direction == SnakeMovementDirections.DOWN:
-            if tail == (head[0], head[1] - 1):
-                if state.snakes[self.player_index].is_in_cell((tail[0], tail[1] + 1)):
-                    return GameAction.RIGHT
-                else:
-                    return GameAction.LEFT
-        elif direction == SnakeMovementDirections.RIGHT:
-            if tail == (head[0] + 1, head[1]):
-                if state.snakes[self.player_index].is_in_cell((tail[0] + 1, tail[1])):
-                    return GameAction.LEFT
-                else:
-                    return GameAction.RIGHT
-        else:
-            if tail == (head[0] - 1, head[1]):
-                if state.snakes[self.player_index].is_in_cell((tail[0] + 1, tail[1])):
-                    return GameAction.RIGHT
-                else:
-                    return GameAction.LEFT
-        # else - random...
-        choice = np.random.choice(2)
-        if choice == 0:
-            return GameAction.LEFT
-        return GameAction.RIGHT
-
     def is_trap(self, state: GameState) -> bool:
+        """
+        this method checks whether the snake closing a loop with itself, meaning it might enter a death trap.
+        the method checks it by checking if in front of the snake (in front in the direction of the snake) there is the
+        snake's body
+        """
         head = state.snakes[self.player_index].head
         direction = state.snakes[self.player_index].direction
         if direction == SnakeMovementDirections.UP:
@@ -353,12 +326,21 @@ class TournamentAgent(Player):
             cell_to_check = (head[0], head[1] + 1)
         else:
             cell_to_check = (head[0], head[1] - 1)
+        # return True if in front of the snake's head is the snake's body
         return state.snakes[self.player_index].is_in_cell(cell_to_check)
 
     def trap_escape(self, state: GameState) -> GameAction:
+        """
+        this method will be called in case the snake entered a self-loop trap.
+        the method will return which side is probably not entering the trap (it will never return STRAIGHT, because by
+        definition of trap, STRAIGHT is the snake's body).
+        the method first checks if only of LEFT or RIGHT means not instant death. in case both of them are available,
+        the snake will prefer to go to the direction of it's tail - it will less likely be a death trap
+        """
         head = state.snakes[self.player_index].head
         tail = state.snakes[self.player_index].tail_position
         direction = state.snakes[self.player_index].direction
+        # cell_to_check saves the cell in front of the snake
         if direction == SnakeMovementDirections.UP:
             cell_to_check = (head[0] - 1, head[1])
         elif direction == SnakeMovementDirections.DOWN:
@@ -369,62 +351,111 @@ class TournamentAgent(Player):
             cell_to_check = (head[0], head[1] - 1)
 
         if state.snakes[self.player_index].is_in_cell(cell_to_check):
+            # if we reach here - in one of the sides there is a death trap. STRAIGHT is instant death
             if direction == SnakeMovementDirections.UP:
-                # check if right is also death
+                # check if right is also death (if so - return left)
                 if state.snakes[self.player_index].is_in_cell((head[0], head[1] + 1)):
                     return GameAction.LEFT
-                # check if left is also death
+                # check if left is also death (if so - return right)
                 elif state.snakes[self.player_index].is_in_cell((head[0], head[1] - 1)):
                     return GameAction.RIGHT
-                # tail(x) > head(x)
+                # tail(x) > head(x) - the tail is to the right
                 if tail[1] > head[1]:
                     return GameAction.RIGHT
+                # the tail is to the left
                 elif tail[1] < head[1]:
                     return GameAction.LEFT
                 else:
                     return self.emergency(state, direction)
             elif direction == SnakeMovementDirections.DOWN:
-                # check if right is also death
+                # check if right is also death (if so - return left)
                 if state.snakes[self.player_index].is_in_cell((head[0], head[1] + 1)):
                     return GameAction.RIGHT
-                # check if left is also death
+                # check if left is also death (if so - return right)
                 elif state.snakes[self.player_index].is_in_cell((head[0], head[1] - 1)):
                     return GameAction.LEFT
-                # tail(x) > head(x)
+                # tail(x) > head(x) - the tail is to the left
                 if tail[1] > head[1]:
                     return GameAction.LEFT
+                # the tail is to the right
                 elif tail[1] < head[1]:
                     return GameAction.RIGHT
                 else:
                     return self.emergency(state, direction)
             elif direction == SnakeMovementDirections.RIGHT:
-                # check if up is also death
+                # check if up is also death (if so - return right, because in this direction, left==up)
                 if state.snakes[self.player_index].is_in_cell((head[0] - 1, head[1])):
                     return GameAction.RIGHT
-                # check if down is also death
+                # check if down is also death (if so - return left, because in this direction, right==down)
                 elif state.snakes[self.player_index].is_in_cell((head[0] + 1, head[1])):
                     return GameAction.LEFT
-                # tail(y) > head(y)
+                # tail(y) > head(y) - the tail is to the right
                 if tail[0] > head[0]:
                     return GameAction.RIGHT
+                # the tail is to the left
                 elif tail[0] < head[0]:
                     return GameAction.LEFT
                 else:
                     return self.emergency(state, direction)
             elif direction == SnakeMovementDirections.LEFT:
-                # check if up is also death
+                # check if up is also death (if so - return left, because in this direction, right==up)
                 if state.snakes[self.player_index].is_in_cell((head[0] - 1, head[1])):
                     return GameAction.LEFT
-                # check if down is also death
+                # check if down is also death (if so - return right, because in this direction, left==down)
                 elif state.snakes[self.player_index].is_in_cell((head[0] + 1, head[1])):
                     return GameAction.RIGHT
-                # tail(y) > head(y)
+                # tail(y) > head(y) - the tail is to the left
                 if tail[0] > head[0]:
                     return GameAction.LEFT
+                # the tail is to the right
                 elif tail[0] < head[0]:
                     return GameAction.RIGHT
                 else:
                     return self.emergency(state, direction)
+
+    def emergency(self, state: GameState, direction) -> GameAction:
+        """
+        this method will be called in case there is a death trap if the snake will turn to the right or to the left,
+        and the tail is exactly behind the head of the snake
+        in this case - we check if there is an empty cell in the right side of the tail or the left side, and turn to
+        the side with out the empty cell (the direction the body of the snakes move
+        if no cell is found also in this method - return just random... it is very rear to reach it
+        """
+        head = state.snakes[self.player_index].head
+        tail = state.snakes[self.player_index].tail_position
+        if direction == SnakeMovementDirections.UP:
+            # check if the cell to the right of the tail is a snake body. if it is - turn RIGHT
+            if state.snakes[self.player_index].is_in_cell((tail[0], tail[1] + 1)):
+                return GameAction.RIGHT
+            # check if the cell to the left of the tail is a snake body. if it is - turn LEFT
+            if state.snakes[self.player_index].is_in_cell((tail[0], tail[1] - 1)):
+                return GameAction.LEFT
+        elif direction == SnakeMovementDirections.DOWN:
+            # check if the cell to the right of the tail is a snake body. if it is - turn LEFT (because we are facing down)
+            if state.snakes[self.player_index].is_in_cell((tail[0], tail[1] + 1)):
+                return GameAction.LEFT
+            # check if the cell to the left of the tail is a snake body. if it is - turn RIGHT (because we are facing down)
+            if state.snakes[self.player_index].is_in_cell((tail[0], tail[1] - 1)):
+                return GameAction.RIGHT
+        elif direction == SnakeMovementDirections.RIGHT:
+            # check if the cell below the tail is a snake body. if it is - turn RIGHT (because we are facing right)
+            if state.snakes[self.player_index].is_in_cell((tail[0] + 1, tail[1])):
+                return GameAction.RIGHT
+            # check if the cell above the tail is a snake body. if it is - turn LEFT (because we are facing right)
+            if state.snakes[self.player_index].is_in_cell((tail[0] - 1, tail[1])):
+                return GameAction.LEFT
+        else:
+            # check if the cell below the tail is a snake body. if it is - turn LEFT (because we are facing left)
+            if state.snakes[self.player_index].is_in_cell((tail[0] + 1, tail[1])):
+                return GameAction.LEFT
+            # check if the cell above the tail is a snake body. if it is - turn RIGHT (because we are facing left)
+            if state.snakes[self.player_index].is_in_cell((tail[0] - 1, tail[1])):
+                return GameAction.RIGHT
+        # else - random...
+        choice = np.random.choice(2)
+        if choice == 0:
+            return GameAction.LEFT
+        return GameAction.RIGHT
 
     def fruit_rank(self, state: GameState, fruit_location: tuple) -> int:
         """
