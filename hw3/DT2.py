@@ -18,6 +18,3 @@ predicted_9 = id3_9.predict(test_data)
 
 tn, fp, fn, tp = sklearn.metrics.confusion_matrix(test_labels, predicted_9).ravel()
 print([[tp, fp], [fn, tn]])
-
-error_cut = error(predicted_9, test_labels)
-print("error cut: " + str(error_cut))
